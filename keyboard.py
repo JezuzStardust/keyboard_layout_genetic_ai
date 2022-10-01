@@ -21,7 +21,7 @@ distances = {( 0,  1): tm,  ( 1,  0): tm,
 			 ( 4,  5): mb,  ( 5,  4): mb,
 			 ( 6,  7): tm,  ( 7,  6): tm, 
 			 ( 6,  8): tb,  ( 8,  6): tb,
-			 ( 8,  9): mb,  ( 9,  8): mb,
+			 ( 7,  8): mb,  ( 8,  7): mb,
 			 ( 9, 10): tm,  (10,  9): tm, 
 			 ( 9, 11): tb,  (11,  9): tb, 
 			 ( 9, 12): ne,  (12,  9): ne,
@@ -60,7 +60,7 @@ distances = {( 0,  1): tm,  ( 1,  0): tm,
 			 (25, 26): mb,  (26, 25): mb,
 			 (27, 28): tm,  (28, 27): tm,
 			 (27, 29): tb,  (29, 27): tb,
-			 (27, 29): tb,  (29, 27): tb
+			 (28, 29): mb,  (29, 28): mb
 			 }
 # # From center to upper row distance
 # cur = 1.032
@@ -146,8 +146,7 @@ distances = {( 0,  1): tm,  ( 1,  0): tm,
 class Population():
     """Keeps track of the different generations. Should I keep only the first generation?"""
     def __init__(self, size):
-        # Generate keyboards
-        # Add to self.keyboards
+        # size: population size
         self.size = size
         self.keyboards = [Keyboard() for _ in range(0,self.size)]
 
@@ -155,9 +154,29 @@ class Population():
         fitness = 0
         for kbd in self.keyboards:
             fitness += kbd.fitness
-        return fitness
+        return fitness / self.size
 
+    def sort_by_fitness(self): 
+        self.keyboards.sort(key = lambda k: k.fitness)
 
+    def generate_new_generation(self):
+        new_gen = []
+
+        # Keep top 10% 
+        keep = self.size // 10 
+
+        for i in range(0, keep+1): 
+            new_gen.append(self.keyboards[i])
+
+        # For the top 50% randomly mate each pairs to create new keyboards. 
+        half = self.size // 2
+        while len(new_gen) < self.size: 
+            i = random.randint(0, half+1)
+            j = random.randint(0, half+1)
+            new_keyboard = Keyboard(self.keyboards[i], self.keyboards[j])
+            new_gen.append(new_keyboard)
+
+        self.keyboards = new_gen
 
 class Keyboard():
     def __init__(self, *parents):
@@ -178,9 +197,10 @@ class Keyboard():
         # We should also give a slight bonus if certain finger combinations are used.
         # Alternating left and right hand should give bonus. 
         # Using a rolling finger motion with the same hand should also give a bonus. 
+        # Fingers should return to base position after a certain number of keys and 
+        # after each space. 
         text = "the quick brown fox jumps over the lazy dog.".upper()
-        self.layout = dict(zip('QAZWSXEDCRFVTGBYHNUJMIK,OL.P;?',[i for i in range(0,30)]))
-        print(self.layout)
+        # self.layout = dict(zip('QAZWSXEDCRFVTGBYHNUJMIK,OL.P;?',[i for i in range(0,30)])) # For QWERTY
         finger_positions = [1, 4, 7, 10, 19, 22, 25, 28]
         for letter in text: 
             if letter != ' ':
@@ -214,13 +234,22 @@ class Keyboard():
                     total_penalty += distances[(finger_positions[7], l)]
                     finger_positions[7] = l 
 
-        print(finger_positions)
         return total_penalty
     
     @staticmethod
     def generate_layout_from_parents(parents):
-        print(parents)
         layout = {}
+        coins = [random.randint(0,1) for _ in range(0,30)]
+        for i, key in enumerate(parents[0].layout.keys()):
+            if key not in layout.keys():
+                proposed_position = parents[coins[i]].layout[key]
+                while proposed_position in layout.values(): 
+                    # Move to next available position.
+                    proposed_position += 1 
+                    proposed_position %= 30 
+                layout[key] = proposed_position
+        # Choose half of the keys from one and half from the other. 
+        # layout = dict(zip('QAZWSXEDCRFVTGBYHNUJMIK,OL.P;?',[i for i in range(0,30)])) # For QWERTY
         return layout
     
     @staticmethod
