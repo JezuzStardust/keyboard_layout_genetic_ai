@@ -1,7 +1,8 @@
 import random
+import json # In order to read the data. 
 
 symbols = [i for i in 'ABCDEFGHIJKLMNOPQRTSUVWXYZ,.?']
-places = [i for i in range(0,28)]
+places = [i for i in range(0,29)]
 
 tm = 1.032 # Top to middle
 tb = 2.138 # Top to bottom
@@ -149,6 +150,7 @@ class Population():
         # size: population size
         self.size = size
         self.keyboards = [Keyboard() for _ in range(0,self.size)]
+        self.sorted = False
 
     def average_fitness(self):
         fitness = 0
@@ -156,10 +158,17 @@ class Population():
             fitness += kbd.fitness
         return fitness / self.size
 
+    def best_fitness(self):
+        self.sort_by_fitness()
+        return self.keyboards[0].fitness
+
     def sort_by_fitness(self): 
-        self.keyboards.sort(key = lambda k: k.fitness)
+        if not self.sorted:
+            self.keyboards.sort(key = lambda k: k.fitness)
+            self.sorted = True
 
     def generate_new_generation(self):
+        self.sort_by_fitness()
         new_gen = []
 
         # Keep top 10% 
@@ -176,6 +185,7 @@ class Population():
             new_keyboard = Keyboard(self.keyboards[i], self.keyboards[j])
             new_gen.append(new_keyboard)
 
+        self.sorted = False
         self.keyboards = new_gen
 
 class Keyboard():
@@ -193,46 +203,93 @@ class Keyboard():
         # It will also use a data set from ArXiv e.g. 
         # We need to constantly keep track of where the fingers are. 
         # Fingers stay on key last pressed until used again. 
-        # The last assumption should be changed. 
-        # We should also give a slight bonus if certain finger combinations are used.
-        # Alternating left and right hand should give bonus. 
-        # Using a rolling finger motion with the same hand should also give a bonus. 
+        # TODO: The last assumption should be changed. 
         # Fingers should return to base position after a certain number of keys and 
         # after each space. 
+        # Also give a slight bonus if certain finger combinations are used.
+        # E.g. a rolling finger motion with the same hand.
         text = "the quick brown fox jumps over the lazy dog.".upper()
-        # self.layout = dict(zip('QAZWSXEDCRFVTGBYHNUJMIK,OL.P;?',[i for i in range(0,30)])) # For QWERTY
+        # self.layout = dict(zip('QAZWSXEDCRFVTGBYHNUJMIK,OL.P?', [i for i in range(0,30)])) # For QWERTY
         finger_positions = [1, 4, 7, 10, 19, 22, 25, 28]
-        for letter in text: 
-            if letter != ' ':
-                # If the finger is already in position, add no penatly. 
-                # TODO: Add penalty for double tap if no letter between. 
-                l = self.layout[letter]
-                if l in finger_positions: 
-                    continue
-                elif l in [0,1,2]: 
-                    total_penalty += distances[(finger_positions[0], l)]
-                    finger_positions[0] = l # Move left hand pinkie.
-                elif l in [3, 4, 5]: 
-                    total_penalty += distances[(finger_positions[1], l)]
-                    finger_positions[1] = l 
-                elif l in [6, 7, 8]: 
-                    total_penalty += distances[(finger_positions[2], l)]
-                    finger_positions[2] = l 
-                elif l in [9, 10, 11, 12, 13, 14]: 
-                    total_penalty += distances[(finger_positions[3], l)]
-                    finger_positions[3] = l 
-                elif l in [15, 16, 17, 18, 19, 20]:
-                    total_penalty += distances[(finger_positions[4], l)]
-                    finger_positions[4] = l 
-                elif l in [21, 22, 23]:
-                    total_penalty += distances[(finger_positions[5], l)]
-                    finger_positions[5] = l 
-                elif l in [24, 25, 26]:
-                    total_penalty += distances[(finger_positions[6], l)]
-                    finger_positions[6] = l 
-                elif l in [27, 28, 29]:
-                    total_penalty += distances[(finger_positions[7], l)]
-                    finger_positions[7] = l 
+        with open('./arxiv-metadata-oai-snapshot.json', 'r') as file: 
+            i = 0
+            for jsonObj in file: 
+                i += 1
+                if i > 1000: # Use the 1000 first abstracts only.
+                    break
+                entry = json.loads(jsonObj) 
+                text = str(entry['abstract']).upper()
+                previous_finger = ' '
+                for letter in text: 
+                    if letter in symbols:
+                        l = self.layout[letter]
+                        # If the finger is already in position, add no penatly. 
+                        if l in finger_positions: 
+                            continue
+                        elif l in [0,1,2]: # Left little finger.
+                            total_penalty += distances[(finger_positions[0], l)]
+                            if previous_finger == 'll': # Same finger twice
+                                total_penalty += .5
+                            elif previous_finger[0] == 'r': # If other hand 
+                                total_penalty -= .5
+                            finger_positions[0] = l # Move finger.
+                            previous_finger = 'll' 
+                        elif l in [3, 4, 5]: # Left ring finger. 
+                            total_penalty += distances[(finger_positions[1], l)]
+                            if previous_finger == 'lr': 
+                                total_penalty += .5 
+                            elif previous_finger[0] == 'r': 
+                                total_penalty -= .5
+                            finger_positions[1] = l 
+                            previous_finger = 'lr' 
+                        elif l in [6, 7, 8]: # Left middle finger.
+                            total_penalty += distances[(finger_positions[2], l)]
+                            if previous_finger == 'lm':
+                                total_penalty += .5
+                            elif previous_finger[0] == 'r': 
+                                total_penalty -=.5
+                            finger_positions[2] = l 
+                            previous_finger = 'lm' 
+                        elif l in [9, 10, 11, 12, 13, 14]: # Left index finger. 
+                            total_penalty += distances[(finger_positions[3], l)]
+                            if previous_finger == 'li':
+                                total_penalty += .5
+                            elif previous_finger[0] == 'r': 
+                                total_penalty -=.5
+                            finger_positions[3] = l 
+                            previous_finger = 'li' 
+                        elif l in [15, 16, 17, 18, 19, 20]: # Right index finger.
+                            total_penalty += distances[(finger_positions[4], l)]
+                            if previous_finger == 'ri':
+                                total_penalty += .5
+                            elif previous_finger[0] == 'l': 
+                                total_penalty -=.5
+                            finger_positions[4] = l 
+                            previous_finger = 'ri'
+                        elif l in [21, 22, 23]: # Right middle finger.
+                            total_penalty += distances[(finger_positions[5], l)]
+                            if previous_finger == 'rm':
+                                total_penalty += .5
+                            elif previous_finger[0] == 'l': 
+                                total_penalty -=.5
+                            finger_positions[5] = l 
+                            previous_finger = 'rm'
+                        elif l in [24, 25, 26]: # Right ring finger. 
+                            total_penalty += distances[(finger_positions[6], l)]
+                            if previous_finger == 'rr':
+                                total_penalty += .5
+                            elif previous_finger[0] == 'l': 
+                                total_penalty -=.5
+                            finger_positions[6] = l 
+                            previous_finger = 'rr'
+                        elif l in [27, 28, 29]: # Right little finger.
+                            total_penalty += distances[(finger_positions[7], l)]
+                            if previous_finger == 'rl':
+                                total_penalty += .5
+                            elif previous_finger[0] == 'l': 
+                                total_penalty -=.5
+                            finger_positions[7] = l 
+                            previous_finger = 'rl'
 
         return total_penalty
     
@@ -249,7 +306,7 @@ class Keyboard():
                     proposed_position %= 30 
                 layout[key] = proposed_position
         # Choose half of the keys from one and half from the other. 
-        # layout = dict(zip('QAZWSXEDCRFVTGBYHNUJMIK,OL.P;?',[i for i in range(0,30)])) # For QWERTY
+        # layout = dict(zip('QAZWSXEDCRFVTGBYHNUJMIK,OL.P?',[i for i in range(0,30)])) # For QWERTY
         return layout
     
     @staticmethod
